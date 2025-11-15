@@ -1,7 +1,8 @@
-import { useState, useCallback, useEffect, useMemo } from 'preact/hooks';
+import { useState, useCallback, useEffect } from 'preact/hooks';
 import '../assets/corewar-game.css';
-import WarriorDefinition from '../components/WarriorDefinition.tsx';
+import TabbedWarriorDefinition from '../components/TabbedWarriorDefinition.tsx';
 import MemoryGrid from '../components/MemoryGrid.tsx';
+import CoreMemorySnippet from '../components/CoreMemorySnippet.tsx';
 
 // --- CORE WAR TYPES AND CONSTANTS ---
 
@@ -264,11 +265,32 @@ const executeInstruction = (
 };
 
 
+// --- WARRIOR DEFINITION TYPE ---
+
+/** Warrior definition for UI (before loading into core) */
+interface WarriorDefinition {
+  id: number;
+  name: string;
+  redcode: string;
+  color: string;
+}
+
 // --- REACT COMPONENT ---
 
 export default function CoreWarGame() {
-  const initialRedcode = "MOV 0, 1\nDAT #0, #0";
-  const [redcode, setRedcode] = useState(initialRedcode);
+  // Predefined warrior colors
+  const WARRIOR_COLORS = ['#4ade80', '#f87171', '#fbbf24', '#60a5fa'];
+  
+  // Warrior definitions (UI state)
+  const [warriorDefs, setWarriorDefs] = useState<WarriorDefinition[]>([
+    { id: 1, name: 'The Imp', redcode: 'MOV 0, 1', color: WARRIOR_COLORS[0] }
+  ]);
+  const [activeTabIndex, setActiveTabIndex] = useState(0);
+  
+  // Track selected warrior ID based on active tab
+  const selectedWarriorId = warriorDefs[activeTabIndex]?.id || 0;
+  
+  // Core state
   const [core, setCore] = useState<Instruction[]>([]);
   const [warriors, setWarriors] = useState<Warrior[]>([]);
   const [activeProcessIndex, setActiveProcessIndex] = useState(0);
@@ -276,8 +298,9 @@ export default function CoreWarGame() {
   const [cycles, setCycles] = useState(0);
   const [isRunning, setIsRunning] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
-  const [status, setStatus] = useState("Ready to load warrior.");
+  const [status, setStatus] = useState("Ready to load warriors.");
   const [updatedAddresses, setUpdatedAddresses] = useState<Set<number>>(new Set());
+  const [updatingWarriorId, setUpdatingWarriorId] = useState<number>(0);
 
   const log = useCallback((message: string) => {
     setLogs(prev => [new Date().toLocaleTimeString() + " " + message, ...prev.slice(0, 49)]);
@@ -306,10 +329,26 @@ export default function CoreWarGame() {
   }, [resetCore]);
 
 
-  const loadWarrior = useCallback(() => {
+  /**
+   * Calculate evenly spaced starting positions for warriors with minimum separation
+   */
+  const calculateWarriorPositions = useCallback((numWarriors: number): number[] => {
+    const minSeparation = Math.floor(CORE_SIZE / numWarriors);
+    const positions: number[] = [];
+    
+    for (let i = 0; i < numWarriors; i++) {
+      // Evenly space warriors around the core with some randomization
+      const basePos = i * minSeparation;
+      const randomOffset = Math.floor(Math.random() * (minSeparation / 4)); // Add some randomness
+      positions.push(mod(basePos + randomOffset, CORE_SIZE));
+    }
+    
+    return positions;
+  }, []);
+
+  const loadWarriors = useCallback(() => {
     resetCore();
 
-    const warriorId = 1;
     const newCore = Array.from({ length: CORE_SIZE }, () => ({
       ownerId: 0,
       op: 'DAT' as OpCode,
@@ -318,53 +357,98 @@ export default function CoreWarGame() {
       modifier: 'I',
     }));
 
-    const lines = redcode.split('\n').map(line => line.trim()).filter(line => line.length > 0 && !line.startsWith(';'));
-    const instructions: Instruction[] = [];
-    let loadError: string | null = null;
+    const loadedWarriors: Warrior[] = [];
+    const positions = calculateWarriorPositions(warriorDefs.length);
 
-    for (const line of lines) {
-      const instruction = parseRedcodeLine(line, warriorId);
-      if (instruction) {
-        instructions.push(instruction);
-      } else {
-        loadError = `Error parsing line: "${line}"`;
-        break;
+    // Parse and load each warrior definition
+    for (let w = 0; w < warriorDefs.length; w++) {
+      const def = warriorDefs[w];
+      const lines = def.redcode.split('\n').map((line: string) => line.trim()).filter((line: string) => line.length > 0 && !line.startsWith(';'));
+      const instructions: Instruction[] = [];
+      let loadError: string | null = null;
+
+      for (const line of lines) {
+        const instruction = parseRedcodeLine(line, def.id);
+        if (instruction) {
+          instructions.push(instruction);
+        } else {
+          loadError = `Error parsing line in ${def.name}: "${line}"`;
+          break;
+        }
       }
+
+      if (loadError) {
+        log(`Load Error: ${loadError}`);
+        setStatus(`Load failed: ${loadError}`);
+        return;
+      }
+
+      const startAddr = positions[w];
+      
+      // Copy instructions into the core
+      for (let i = 0; i < instructions.length; i++) {
+        const addr = mod(startAddr + i, CORE_SIZE);
+        newCore[addr] = instructions[i];
+      }
+
+      const initialProcess: Process = {
+        pc: startAddr,
+        processId: Math.random(),
+      };
+
+      const newWarrior: Warrior = {
+        id: def.id,
+        name: def.name,
+        startAddr: startAddr,
+        processes: [initialProcess],
+      };
+
+      loadedWarriors.push(newWarrior);
+      log(`${def.name} (W${def.id}) loaded: ${instructions.length} instructions at ${startAddr}.`);
     }
-
-    if (loadError) {
-      log(`Load Error: ${loadError}`);
-      setStatus(`Load failed: ${loadError}`);
-      return;
-    }
-
-    // Place warrior at a random, safe location (e.g., CORE_SIZE / 4)
-    const startAddr = Math.floor(Math.random() * (CORE_SIZE / 2)); 
-    
-    // Copy instructions into the new core
-    for (let i = 0; i < instructions.length; i++) {
-      const addr = mod(startAddr + i, CORE_SIZE);
-      newCore[addr] = instructions[i];
-    }
-
-    const initialProcess: Process = {
-      pc: startAddr,
-      processId: Math.random(),
-    };
-
-    const newWarrior: Warrior = {
-      id: warriorId,
-      name: 'The Imp', // Or user-provided name
-      startAddr: startAddr,
-      processes: [initialProcess],
-    };
 
     setCore(newCore);
-    setWarriors([newWarrior]);
-    setStatus(`Warrior loaded at address ${startAddr}. Core ready.`);
-    log(`Warrior 1 loaded: ${instructions.length} instructions at ${startAddr}.`);
+    setWarriors(loadedWarriors);
+    setStatus(`${loadedWarriors.length} warrior(s) loaded. Core ready.`);
 
-  }, [redcode, log, resetCore]);
+  }, [warriorDefs, log, resetCore, calculateWarriorPositions]);
+
+  // --- WARRIOR DEFINITION HANDLERS ---
+  
+  const handleTabChange = useCallback((index: number) => {
+    setActiveTabIndex(index);
+  }, []);
+
+  const handleWarriorChange = useCallback((index: number, field: 'name' | 'redcode', value: string) => {
+    setWarriorDefs(prev => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [field]: value };
+      return updated;
+    });
+  }, []);
+
+  const handleAddWarrior = useCallback(() => {
+    if (warriorDefs.length >= 4) return;
+    
+    const newId = Math.max(...warriorDefs.map(w => w.id)) + 1;
+    const colorIndex = warriorDefs.length % WARRIOR_COLORS.length;
+    
+    setWarriorDefs(prev => [...prev, {
+      id: newId,
+      name: `Warrior ${newId}`,
+      redcode: 'MOV 0, 1',
+      color: WARRIOR_COLORS[colorIndex]
+    }]);
+    setActiveTabIndex(warriorDefs.length); // Switch to new tab
+  }, [warriorDefs, WARRIOR_COLORS]);
+
+  const handleRemoveWarrior = useCallback((index: number) => {
+    if (warriorDefs.length <= 1) return; // Keep at least one
+    
+    setWarriorDefs(prev => prev.filter((_, i) => i !== index));
+    // Adjust active tab if needed
+    setActiveTabIndex(prev => Math.min(prev, warriorDefs.length - 2));
+  }, [warriorDefs.length]);
   
   // --- CORE EXECUTION CYCLE ---
   const runCycle = useCallback(() => {
@@ -378,13 +462,19 @@ export default function CoreWarGame() {
     const currentWarrior = newWarriors[currentWarriorIndex];
     
     if (currentWarrior.processes.length === 0) {
-        log(`Warrior ${currentWarrior.id} has no processes left. Removing.`);
+        log(`${currentWarrior.name} has no processes left. Eliminated!`);
         newWarriors.splice(currentWarriorIndex, 1);
         setWarriors(newWarriors);
         // Recalculate which warrior is next
         setActiveWarriorIndex(mod(activeWarriorIndex, newWarriors.length));
+        
         if (newWarriors.length === 0) {
-            setStatus("Game over! All warriors killed.");
+            setStatus("Game over! All warriors eliminated.");
+            setIsRunning(false);
+        } else if (newWarriors.length === 1) {
+            const winner = newWarriors[0];
+            setStatus(`🏆 ${winner.name} WINS! (${winner.processes.length} processes remaining)`);
+            log(`🏆 GAME OVER: ${winner.name} is the winner!`);
             setIsRunning(false);
         }
         return; // Skip cycle if warrior is removed
@@ -407,8 +497,12 @@ export default function CoreWarGame() {
     // Update the set of changed addresses for visual feedback
     if (changedAddrs.length > 0) {
       setUpdatedAddresses(new Set(changedAddrs));
+      setUpdatingWarriorId(currentWarrior.id);
       // Clear the flash after a short delay
-      setTimeout(() => setUpdatedAddresses(new Set()), 150);
+      setTimeout(() => {
+        setUpdatedAddresses(new Set());
+        setUpdatingWarriorId(0);
+      }, 150);
     }
     
     // Update the warrior's processes for the next cycle
@@ -432,7 +526,7 @@ export default function CoreWarGame() {
     setCore(newCore);
     setWarriors(newWarriors);
     setCycles(c => c + 1);
-    setStatus(`Cycle ${cycles + 1}: Executed W${currentWarrior.id} at PC ${currentProcess.pc}.`);
+    setStatus(`Cycle ${cycles + 1}: ${currentWarrior.name} executed at PC ${currentProcess.pc}.`);
     
   }, [warriors, core, activeWarriorIndex, activeProcessIndex, cycles, log]);
 
@@ -457,35 +551,6 @@ export default function CoreWarGame() {
 
   // --- UI RENDERING ---
 
-  // Generate a snippet of the core around the active PC for display
-  const activeWarrior = warriors[activeWarriorIndex];
-  const activePC = activeWarrior?.processes[mod(activeProcessIndex, activeWarrior.processes.length)]?.pc ?? 0;
-  
-  const coreSnippet = useMemo(() => {
-    if (!core.length) return [];
-    const windowSize = 25; // Display 25 instructions around the PC
-    const start = mod(activePC - Math.floor(windowSize / 2), CORE_SIZE);
-    
-    const snippet = [];
-    for (let i = 0; i < windowSize; i++) {
-      const addr = mod(start + i, CORE_SIZE);
-      const instruction = core[addr];
-      
-      // Check if any process is at this address
-      const isPC = warriors.some(w => w.processes.some(p => p.pc === addr));
-      
-      const instructionText = `${instruction.op}${instruction.modifier === 'I' ? '' : '.' + instruction.modifier} ${instruction.modeA === 'IMMEDIATE' ? '#' : instruction.modeA === 'INDIRECT_B' ? '@' : ''}${instruction.valA}, ${instruction.modeB === 'IMMEDIATE' ? '#' : instruction.modeB === 'INDIRECT_B' ? '@' : ''}${instruction.valB}`;
-
-      snippet.push({
-        addr,
-        instruction: instructionText,
-        ownerId: instruction.ownerId,
-        isPC: isPC,
-      });
-    }
-    return snippet;
-  }, [core, activePC, warriors]);
-
 
   return (
     <div className="corewar-container">
@@ -498,10 +563,14 @@ export default function CoreWarGame() {
           
           {/* CONTROL PANEL & REDCODE INPUT */}
           <div className="control-column">
-            <WarriorDefinition
-              redcode={redcode}
-              onRedcodeChange={setRedcode}
-              onLoadWarrior={loadWarrior}
+            <TabbedWarriorDefinition
+              warriorDefs={warriorDefs}
+              activeTabIndex={activeTabIndex}
+              onTabChange={handleTabChange}
+              onWarriorChange={handleWarriorChange}
+              onAddWarrior={handleAddWarrior}
+              onRemoveWarrior={handleRemoveWarrior}
+              onLoadWarriors={loadWarriors}
               onToggleRun={toggleRun}
               onStep={step}
               onReset={resetCore}
@@ -522,27 +591,20 @@ export default function CoreWarGame() {
                 <MemoryGrid 
                   core={core} 
                   coreSize={CORE_SIZE}
-                  warriorColors={['#4ade80', '#f87171', '#fbbf24', '#60a5fa', '#c084fc']}
+                  warriorColors={WARRIOR_COLORS}
                   updatedAddresses={updatedAddresses}
                 />
               </div>
             </div>
             
-            <div className="panel">
-              <h2 className="panel-title">Core Memory Snippet (PC Centered)</h2>
-              <div className="core-memory-container">
-                {coreSnippet.map((c) => (
-                  <div 
-                    key={c.addr} 
-                    className={`core-memory-row ${c.isPC ? 'core-memory-row-active' : c.ownerId !== 0 ? 'core-memory-row-owned' : ''}`}
-                  >
-                    <span className="core-memory-address">{c.addr.toString().padStart(4, '0')}</span>
-                    <span className={`core-memory-instruction ${c.ownerId === 1 ? 'core-memory-instruction-warrior1' : 'core-memory-instruction-warrior2'}`}>{c.instruction}</span>
-                    <span className="core-memory-owner">W{c.ownerId}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <CoreMemorySnippet
+              core={core}
+              warriors={warriors}
+              warriorDefs={warriorDefs}
+              selectedWarriorId={selectedWarriorId}
+              updatedAddresses={updatedAddresses}
+              updatingWarriorId={updatingWarriorId}
+            />
           </div>
         </div>
         
