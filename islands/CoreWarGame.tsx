@@ -1,5 +1,7 @@
 import { useState, useCallback, useEffect, useMemo } from 'preact/hooks';
 import '../assets/corewar-game.css';
+import WarriorDefinition from '../components/WarriorDefinition.tsx';
+import MemoryGrid from '../components/MemoryGrid.tsx';
 
 // --- CORE WAR TYPES AND CONSTANTS ---
 
@@ -159,12 +161,13 @@ const executeInstruction = (
   process: Process,
   processes: Process[],
   log: (message: string) => void,
-): { newCore: Instruction[], newProcesses: Process[], processKilled: boolean, nextPc: number } => {
+): { newCore: Instruction[], newProcesses: Process[], processKilled: boolean, nextPc: number, updatedAddresses: number[] } => {
   const instruction = core[process.pc];
-  let newCore = [...core];
-  let newProcesses = [...processes];
+  const newCore = [...core];
+  const newProcesses = [...processes];
   let processKilled = false;
   let nextPc = mod(process.pc + 1, CORE_SIZE);
+  const updatedAddresses: number[] = [];
   
   const getVal = (pc: number, mode: Mode, value: number, field: 'A' | 'B'): number => {
       if (mode === 'IMMEDIATE') {
@@ -180,7 +183,6 @@ const executeInstruction = (
   
   // Get source value (ValA) and destination field/value (ValB)
   const valA = getVal(process.pc, instruction.modeA, instruction.valA, 'A');
-  const valB = getVal(process.pc, instruction.modeB, instruction.valB, 'B');
 
   switch (instruction.op) {
     case 'DAT':
@@ -201,12 +203,14 @@ const executeInstruction = (
              ownerId: warrior.id,
              valB: valA // Use valA since it's the immediate value
          };
+         updatedAddresses.push(addrB);
       } else {
           // Standard MOV.I
           newCore[addrB] = {
               ...newCore[addrA],
               ownerId: warrior.id, // New instruction belongs to this warrior
           };
+          updatedAddresses.push(addrB);
       }
       break;
 
@@ -218,6 +222,7 @@ const executeInstruction = (
         valB: mod(newCore[addrB].valB + valA, CORE_SIZE),
         // If it was ADD.F, it would also modify valA. For simplicity, we only modify valB (standard ADD.I)
       };
+      updatedAddresses.push(addrB);
       break;
 
     case 'SUB':
@@ -227,6 +232,7 @@ const executeInstruction = (
         ownerId: warrior.id,
         valB: mod(newCore[addrB].valB - valA, CORE_SIZE),
       };
+      updatedAddresses.push(addrB);
       break;
 
     case 'JMP':
@@ -254,7 +260,7 @@ const executeInstruction = (
       break;
   }
 
-  return { newCore, newProcesses, processKilled, nextPc };
+  return { newCore, newProcesses, processKilled, nextPc, updatedAddresses };
 };
 
 
@@ -271,6 +277,7 @@ export default function CoreWarGame() {
   const [isRunning, setIsRunning] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
   const [status, setStatus] = useState("Ready to load warrior.");
+  const [updatedAddresses, setUpdatedAddresses] = useState<Set<number>>(new Set());
 
   const log = useCallback((message: string) => {
     setLogs(prev => [new Date().toLocaleTimeString() + " " + message, ...prev.slice(0, 49)]);
@@ -303,7 +310,7 @@ export default function CoreWarGame() {
     resetCore();
 
     const warriorId = 1;
-    let newCore = Array.from({ length: CORE_SIZE }, () => ({
+    const newCore = Array.from({ length: CORE_SIZE }, () => ({
       ownerId: 0,
       op: 'DAT' as OpCode,
       modeA: 'IMMEDIATE' as Mode, valA: DEFAULT_DAT_VALUE,
@@ -312,7 +319,7 @@ export default function CoreWarGame() {
     }));
 
     const lines = redcode.split('\n').map(line => line.trim()).filter(line => line.length > 0 && !line.startsWith(';'));
-    let instructions: Instruction[] = [];
+    const instructions: Instruction[] = [];
     let loadError: string | null = null;
 
     for (const line of lines) {
@@ -363,7 +370,7 @@ export default function CoreWarGame() {
   const runCycle = useCallback(() => {
     if (warriors.length === 0 || !core) return;
     
-    let newWarriors = [...warriors];
+    const newWarriors = [...warriors];
     let newCore = [...core];
 
     // Determine whose turn it is (simple round-robin between warriors)
@@ -387,7 +394,7 @@ export default function CoreWarGame() {
     const currentProcessIndex = mod(activeProcessIndex, currentWarrior.processes.length);
     const currentProcess = currentWarrior.processes[currentProcessIndex];
 
-    const { newCore: updatedCore, newProcesses, processKilled, nextPc } = executeInstruction(
+    const { newCore: updatedCore, newProcesses, processKilled, nextPc, updatedAddresses: changedAddrs } = executeInstruction(
       newCore,
       currentWarrior,
       currentProcess,
@@ -396,6 +403,13 @@ export default function CoreWarGame() {
     );
 
     newCore = updatedCore;
+    
+    // Update the set of changed addresses for visual feedback
+    if (changedAddrs.length > 0) {
+      setUpdatedAddresses(new Set(changedAddrs));
+      // Clear the flash after a short delay
+      setTimeout(() => setUpdatedAddresses(new Set()), 150);
+    }
     
     // Update the warrior's processes for the next cycle
     if (processKilled) {
@@ -452,7 +466,7 @@ export default function CoreWarGame() {
     const windowSize = 25; // Display 25 instructions around the PC
     const start = mod(activePC - Math.floor(windowSize / 2), CORE_SIZE);
     
-    let snippet = [];
+    const snippet = [];
     for (let i = 0; i < windowSize; i++) {
       const addr = mod(start + i, CORE_SIZE);
       const instruction = core[addr];
@@ -484,59 +498,36 @@ export default function CoreWarGame() {
           
           {/* CONTROL PANEL & REDCODE INPUT */}
           <div className="control-column">
-            <div className="panel">
-              <h2 className="panel-title">Warrior Definition</h2>
-              <textarea
-                value={redcode}
-                onInput={(e) => setRedcode((e.target as HTMLTextAreaElement).value)}
-                rows={8}
-                className="redcode-editor"
-                placeholder="Enter Redcode here (e.g., MOV 0, 1)"
-              />
-              <button
-                onClick={loadWarrior}
-                className="load-warrior-button"
-              >
-                Load Warrior
-              </button>
-            </div>
-            
-            {/* CONTROLS */}
-            <div className="panel">
-              <h2 className="panel-title">Controls</h2>
-              <div className="controls-buttons">
-                <button
-                  onClick={toggleRun}
-                  disabled={warriors.length === 0}
-                  className={`button ${isRunning ? 'button-pause' : 'button-run'}`}
-                >
-                  {isRunning ? 'Pause' : 'Run'}
-                </button>
-                <button
-                  onClick={step}
-                  disabled={isRunning || warriors.length === 0}
-                  className="button button-step"
-                >
-                  Step Cycle
-                </button>
-                <button
-                  onClick={resetCore}
-                  className="button button-reset"
-                >
-                  Reset
-                </button>
-              </div>
-              <div className="status-info">
-                <p>Status: <span className="status-value">{status}</span></p>
-                <p>Cycle: <span className="status-value">{cycles}</span></p>
-                <p>Warriors: <span className="status-value">{warriors.length}</span></p>
-                <p>Processes: <span className="status-value">{warriors.reduce((sum, w) => sum + w.processes.length, 0)}</span></p>
-              </div>
-            </div>
+            <WarriorDefinition
+              redcode={redcode}
+              onRedcodeChange={setRedcode}
+              onLoadWarrior={loadWarrior}
+              onToggleRun={toggleRun}
+              onStep={step}
+              onReset={resetCore}
+              isRunning={isRunning}
+              hasWarriors={warriors.length > 0}
+              status={status}
+              cycles={cycles}
+              warriorCount={warriors.length}
+              processCount={warriors.reduce((sum, w) => sum + w.processes.length, 0)}
+            />
           </div>
 
           {/* CORE DISPLAY */}
           <div className="display-column">
+            <div className="panel memory-grid-panel">
+              <h2 className="panel-title">Core Memory Visualization ({CORE_SIZE} cells)</h2>
+              <div className="memory-grid-wrapper">
+                <MemoryGrid 
+                  core={core} 
+                  coreSize={CORE_SIZE}
+                  warriorColors={['#4ade80', '#f87171', '#fbbf24', '#60a5fa', '#c084fc']}
+                  updatedAddresses={updatedAddresses}
+                />
+              </div>
+            </div>
+            
             <div className="panel">
               <h2 className="panel-title">Core Memory Snippet (PC Centered)</h2>
               <div className="core-memory-container">
