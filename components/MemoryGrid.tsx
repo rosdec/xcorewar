@@ -37,25 +37,46 @@ export default function MemoryGrid({
       const containerWidth = container.clientWidth;
       const containerHeight = container.clientHeight;
       
-      // Try different column counts to find the best fit
+      if (containerWidth === 0 || containerHeight === 0) return;
+      
+      // Calculate the aspect ratio
+      const aspectRatio = containerWidth / containerHeight;
+      
+      // Try different column counts to find the best fit that maximizes cell size
       let bestCols = 100;
       let bestSize = 1;
+      let bestFit = Infinity; // Track how well it fits (lower is better)
       
-      for (let testCols = 50; testCols <= 200; testCols += 10) {
+      // Test a wider range of column configurations
+      for (let testCols = 40; testCols <= 250; testCols += 5) {
         const testRows = Math.ceil(coreSize / testCols);
-        const testCellWidth = Math.floor(containerWidth / testCols);
-        const testCellHeight = Math.floor(containerHeight / testRows);
+        
+        // Skip if rows is 0
+        if (testRows === 0) continue;
+        
+        // Calculate what size cells we could have
+        const testCellWidth = containerWidth / testCols;
+        const testCellHeight = containerHeight / testRows;
         const testSize = Math.min(testCellWidth, testCellHeight);
         
-        // Check if this fits better
-        if (testSize > bestSize) {
+        // Calculate how much wasted space there would be
+        const gridWidth = testCols * testSize;
+        const gridHeight = testRows * testSize;
+        const wastedSpace = (containerWidth - gridWidth) + (containerHeight - gridHeight);
+        
+        // Prefer configurations that maximize cell size while minimizing waste
+        // Use a score that balances size and fit
+        const score = wastedSpace - (testSize * 10); // Prioritize larger cells
+        
+        if (testSize >= 2 && score < bestFit) {
+          bestFit = score;
           bestSize = testSize;
           bestCols = testCols;
         }
       }
       
       // Ensure minimum size of 2 pixels
-      bestSize = Math.max(2, bestSize);
+      bestSize = Math.max(2, Math.floor(bestSize));
       
       setCellSize(bestSize);
       setCols(bestCols);

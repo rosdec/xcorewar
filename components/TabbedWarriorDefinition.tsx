@@ -20,10 +20,6 @@ interface TabbedWarriorDefinitionProps {
   onReset: () => void;
   isRunning: boolean;
   hasWarriors: boolean;
-  status: string;
-  cycles: number;
-  warriorCount: number;
-  processCount: number;
   maxWarriors?: number;
 }
 
@@ -40,10 +36,6 @@ export default function TabbedWarriorDefinition({
   onReset,
   isRunning,
   hasWarriors,
-  status,
-  cycles,
-  warriorCount,
-  processCount,
   maxWarriors = 4,
 }: TabbedWarriorDefinitionProps): JSX.Element {
   const canAddWarrior = warriorDefs.length < maxWarriors;
@@ -160,13 +152,6 @@ export default function TabbedWarriorDefinition({
         >
           ↻
         </button>
-      </div>
-      
-      <div className="status-info">
-        <p>Status: <span className="status-value">{status}</span></p>
-        <p>Cycle: <span className="status-value">{cycles}</span></p>
-        <p>Warriors: <span className="status-value">{warriorCount}</span></p>
-        <p>Processes: <span className="status-value">{processCount}</span></p>
       </div>
     </div>
   );

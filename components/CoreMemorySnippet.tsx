@@ -1,4 +1,4 @@
-import { useMemo } from 'preact/hooks';
+import { useMemo, useState } from 'preact/hooks';
 
 /** The memory size for the Core War simulator. */
 const CORE_SIZE = 8000;
@@ -59,7 +59,12 @@ export default function CoreMemorySnippet({
   updatingWarriorId
 }: CoreMemorySnippetProps) {
   
+  const [isOpen, setIsOpen] = useState(false);
+  
   const coreSnippet = useMemo(() => {
+    // Skip computation when closed to save CPU time
+    if (!isOpen) return [];
+    
     if (!core.length) return [];
     
     // Find the selected warrior and their active process
@@ -108,30 +113,34 @@ export default function CoreMemorySnippet({
       });
     }
     return snippet;
-  }, [core, warriors, warriorDefs, selectedWarriorId, updatedAddresses, updatingWarriorId]);
+  }, [core, warriors, warriorDefs, selectedWarriorId, updatedAddresses, updatingWarriorId, isOpen]);
 
   return (
     <div className="panel">
-      <h2 className="panel-title">Core Memory Snippet (Selected Warrior)</h2>
-      <div className="core-memory-container">
-        {coreSnippet.map((c) => (
-          <div 
-            key={c.addr} 
-            className={`core-memory-row ${c.isPC ? 'core-memory-row-active' : c.ownerId !== 0 ? 'core-memory-row-owned' : ''}`}
-          >
-            <span className="core-memory-address">{c.addr.toString().padStart(4, '0')}</span>
-            <span 
-              className="core-memory-instruction"
-              style={{ color: c.ownerId !== 0 ? c.ownerColor : '#9ca3af' }}
+      <h2 className="panel-title" onClick={() => setIsOpen(!isOpen)} style={{ cursor: 'pointer', userSelect: 'none' }}>
+        Core Memory Snippet (Selected Warrior) {isOpen ? '▼' : '▶'}
+      </h2>
+      {isOpen && (
+        <div className="core-memory-container">
+          {coreSnippet.map((c) => (
+            <div 
+              key={c.addr} 
+              className={`core-memory-row ${c.isPC ? 'core-memory-row-active' : c.ownerId !== 0 ? 'core-memory-row-owned' : ''}`}
             >
-              {c.instruction}
-            </span>
-            <span className="core-memory-owner" style={{ color: c.ownerColor }}>
-              {c.ownerId !== 0 ? c.ownerName : ''}
-            </span>
-          </div>
-        ))}
-      </div>
+              <span className="core-memory-address">{c.addr.toString().padStart(4, '0')}</span>
+              <span 
+                className="core-memory-instruction"
+                style={{ color: c.ownerId !== 0 ? c.ownerColor : '#9ca3af' }}
+              >
+                {c.instruction}
+              </span>
+              <span className="core-memory-owner" style={{ color: c.ownerColor }}>
+                {c.ownerId !== 0 ? c.ownerName : ''}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

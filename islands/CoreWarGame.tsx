@@ -9,7 +9,7 @@ import CoreMemorySnippet from '../components/CoreMemorySnippet.tsx';
 // Using a simplified ICWS '94 subset for the initial implementation
 
 /** The memory size for the Core War simulator. A standard size is 8000. */
-const CORE_SIZE = 8000;
+const CORE_SIZE = 8100;
 /** The maximum number of processes per warrior. */
 const MAX_PROCESSES = 8000;
 /** The default instruction that fills the core. DAT 0, 0. */
@@ -298,7 +298,6 @@ export default function CoreWarGame() {
   const [cycles, setCycles] = useState(0);
   const [isRunning, setIsRunning] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
-  const [status, setStatus] = useState("Ready to load warriors.");
   const [updatedAddresses, setUpdatedAddresses] = useState<Set<number>>(new Set());
   const [updatingWarriorId, setUpdatingWarriorId] = useState<number>(0);
 
@@ -321,7 +320,6 @@ export default function CoreWarGame() {
     setActiveWarriorIndex(0);
     setCycles(0);
     setIsRunning(false);
-    setStatus("Core initialized.");
   }, [log]);
 
   useEffect(() => {
@@ -379,7 +377,6 @@ export default function CoreWarGame() {
 
       if (loadError) {
         log(`Load Error: ${loadError}`);
-        setStatus(`Load failed: ${loadError}`);
         return;
       }
 
@@ -409,7 +406,6 @@ export default function CoreWarGame() {
 
     setCore(newCore);
     setWarriors(loadedWarriors);
-    setStatus(`${loadedWarriors.length} warrior(s) loaded. Core ready.`);
 
   }, [warriorDefs, log, resetCore, calculateWarriorPositions]);
 
@@ -469,11 +465,9 @@ export default function CoreWarGame() {
         setActiveWarriorIndex(mod(activeWarriorIndex, newWarriors.length));
         
         if (newWarriors.length === 0) {
-            setStatus("Game over! All warriors eliminated.");
             setIsRunning(false);
         } else if (newWarriors.length === 1) {
             const winner = newWarriors[0];
-            setStatus(`🏆 ${winner.name} WINS! (${winner.processes.length} processes remaining)`);
             log(`🏆 GAME OVER: ${winner.name} is the winner!`);
             setIsRunning(false);
         }
@@ -526,7 +520,6 @@ export default function CoreWarGame() {
     setCore(newCore);
     setWarriors(newWarriors);
     setCycles(c => c + 1);
-    setStatus(`Cycle ${cycles + 1}: ${currentWarrior.name} executed at PC ${currentProcess.pc}.`);
     
   }, [warriors, core, activeWarriorIndex, activeProcessIndex, cycles, log]);
 
@@ -576,10 +569,6 @@ export default function CoreWarGame() {
               onReset={resetCore}
               isRunning={isRunning}
               hasWarriors={warriors.length > 0}
-              status={status}
-              cycles={cycles}
-              warriorCount={warriors.length}
-              processCount={warriors.reduce((sum, w) => sum + w.processes.length, 0)}
             />
           </div>
 
@@ -611,10 +600,26 @@ export default function CoreWarGame() {
         {/* LOGS */}
         <div className="panel log-container">
             <h2 className="panel-title">Execution Log</h2>
-            <div className="log-content">
-                {logs.map((log, index) => (
-                    <p key={index} className="log-entry">{log}</p>
-                ))}
+            <div className="log-layout">
+              <div className="log-stats">
+                <div className="log-stat-item">
+                  <div className="log-stat-label">Cycle</div>
+                  <div className="log-stat-value">{cycles}</div>
+                </div>
+                <div className="log-stat-item">
+                  <div className="log-stat-label">Warriors</div>
+                  <div className="log-stat-value">{warriors.length}</div>
+                </div>
+                <div className="log-stat-item">
+                  <div className="log-stat-label">Processes</div>
+                  <div className="log-stat-value">{warriors.reduce((sum, w) => sum + w.processes.length, 0)}</div>
+                </div>
+              </div>
+              <div className="log-content">
+                  {logs.map((log, index) => (
+                      <p key={index} className="log-entry">{log}</p>
+                  ))}
+              </div>
             </div>
         </div>
         
