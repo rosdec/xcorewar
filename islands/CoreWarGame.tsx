@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useMemo } from 'preact/hooks';
+import '../assets/corewar-game.css';
 
 // --- CORE WAR TYPES AND CONSTANTS ---
 
@@ -473,87 +474,80 @@ export default function CoreWarGame() {
 
 
   return (
-    <div className="min-h-screen bg-gray-900 text-gray-100 p-8 font-mono">
-      <div className="max-w-7xl mx-auto">
-        <h1 className="text-4xl font-extrabold text-indigo-400 mb-6 border-b border-indigo-700 pb-2">
+    <div className="corewar-container">
+      <div className="corewar-content">
+        <h1 className="corewar-title">
           Core War Redcode Emulator (MARS)
         </h1>
-        <p className="text-gray-400 mb-6">
-          A simplified emulator for Core War Redcode, supporting the classic Imp (`MOV 0, 1`). Implements `DAT`, `MOV`, `ADD`, `SUB`, `JMP`, `SPL`, and basic addressing modes (`#`, `$`, `@`).
-        </p>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="corewar-layout">
           
           {/* CONTROL PANEL & REDCODE INPUT */}
-          <div className="lg:col-span-1 space-y-6">
-            <div className="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
-              <h2 className="text-xl font-semibold text-white mb-4">Warrior Definition</h2>
+          <div className="control-column">
+            <div className="panel">
+              <h2 className="panel-title">Warrior Definition</h2>
               <textarea
                 value={redcode}
                 onInput={(e) => setRedcode((e.target as HTMLTextAreaElement).value)}
                 rows={8}
-                className="w-full bg-gray-900 p-3 rounded-md border border-gray-600 text-sm focus:ring-indigo-500 focus:border-indigo-500"
+                className="redcode-editor"
                 placeholder="Enter Redcode here (e.g., MOV 0, 1)"
               />
               <button
                 onClick={loadWarrior}
-                className="w-full mt-4 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-md transition duration-150 shadow-md"
+                className="load-warrior-button"
               >
                 Load Warrior
               </button>
             </div>
             
             {/* CONTROLS */}
-            <div className="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
-              <h2 className="text-xl font-semibold text-white mb-4">Controls</h2>
-              <div className="flex gap-4 mb-4">
+            <div className="panel">
+              <h2 className="panel-title">Controls</h2>
+              <div className="controls-buttons">
                 <button
                   onClick={toggleRun}
                   disabled={warriors.length === 0}
-                  className={`flex-1 px-4 py-2 font-bold rounded-md transition duration-150 shadow-md 
-                    ${isRunning 
-                        ? 'bg-yellow-600 hover:bg-yellow-700' 
-                        : 'bg-green-600 hover:bg-green-700'
-                    } disabled:opacity-50`}
+                  className={`button ${isRunning ? 'button-pause' : 'button-run'}`}
                 >
                   {isRunning ? 'Pause' : 'Run'}
                 </button>
                 <button
                   onClick={step}
                   disabled={isRunning || warriors.length === 0}
-                  className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-md transition duration-150 shadow-md disabled:opacity-50"
+                  className="button button-step"
                 >
                   Step Cycle
                 </button>
                 <button
                   onClick={resetCore}
-                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-md transition duration-150 shadow-md"
+                  className="button button-reset"
                 >
                   Reset
                 </button>
               </div>
-              <div className="text-sm border-t border-gray-700 pt-4">
-                <p>Status: <span className="text-indigo-400">{status}</span></p>
-                <p>Cycle: <span className="text-indigo-400">{cycles}</span></p>
-                <p>Warriors: <span className="text-indigo-400">{warriors.length}</span></p>
-                <p>Processes: <span className="text-indigo-400">{warriors.reduce((sum, w) => sum + w.processes.length, 0)}</span></p>
+              <div className="status-info">
+                <p>Status: <span className="status-value">{status}</span></p>
+                <p>Cycle: <span className="status-value">{cycles}</span></p>
+                <p>Warriors: <span className="status-value">{warriors.length}</span></p>
+                <p>Processes: <span className="status-value">{warriors.reduce((sum, w) => sum + w.processes.length, 0)}</span></p>
               </div>
             </div>
           </div>
 
           {/* CORE DISPLAY */}
-          <div className="lg:col-span-2 space-y-6">
-            <div className="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
-              <h2 className="text-xl font-semibold text-white mb-4">Core Memory Snippet (PC Centered)</h2>
-              <div className="h-96 overflow-y-scroll text-xs bg-gray-900 p-3 rounded-md">
+          <div className="display-column">
+            <div className="panel">
+              <h2 className="panel-title">Core Memory Snippet (PC Centered)</h2>
+              <div className="core-memory-container">
                 {coreSnippet.map((c) => (
                   <div 
                     key={c.addr} 
-                    className={`flex justify-between p-1 rounded-sm ${c.isPC ? 'bg-indigo-900 ring-2 ring-indigo-400 font-bold' : c.ownerId !== 0 ? 'bg-gray-700 hover:bg-gray-600' : 'hover:bg-gray-800'}`}
+                    className={`core-memory-row ${c.isPC ? 'core-memory-row-active' : c.ownerId !== 0 ? 'core-memory-row-owned' : ''}`}
                   >
-                    <span className="text-gray-400 w-1/5">{c.addr.toString().padStart(4, '0')}</span>
-                    <span className={`w-3/5 ${c.ownerId === 1 ? 'text-green-400' : 'text-red-400'}`}>{c.instruction}</span>
-                    <span className="w-1/5 text-right text-gray-500">W{c.ownerId}</span>
+                    <span className="core-memory-address">{c.addr.toString().padStart(4, '0')}</span>
+                    <span className={`core-memory-instruction ${c.ownerId === 1 ? 'core-memory-instruction-warrior1' : 'core-memory-instruction-warrior2'}`}>{c.instruction}</span>
+                    <span className="core-memory-owner">W{c.ownerId}</span>
                   </div>
                 ))}
               </div>
@@ -562,11 +556,11 @@ export default function CoreWarGame() {
         </div>
         
         {/* LOGS */}
-        <div className="mt-8 bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
-            <h2 className="text-xl font-semibold text-white mb-4">Execution Log</h2>
-            <div className="h-48 overflow-y-scroll text-xs bg-gray-900 p-3 rounded-md border border-gray-600">
+        <div className="panel log-container">
+            <h2 className="panel-title">Execution Log</h2>
+            <div className="log-content">
                 {logs.map((log, index) => (
-                    <p key={index} className="text-gray-400 truncate hover:text-white">{log}</p>
+                    <p key={index} className="log-entry">{log}</p>
                 ))}
             </div>
         </div>
